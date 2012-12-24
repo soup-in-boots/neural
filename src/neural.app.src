@@ -1,0 +1,12 @@
+{application, neural,
+ [
+  {description, ""},
+  {vsn, "1"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib
+                 ]},
+  {mod, { neural_app, []}},
+  {env, []}
+ ]}.
