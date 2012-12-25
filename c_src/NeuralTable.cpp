@@ -2,12 +2,14 @@
 
 table_set NeuralTable::tables;
 
-NeuralTable::NeuralTable() {
+NeuralTable::NeuralTable(unsigned int kp) {
     gc_curr = 0;
     for (int i = 0;  i < BUCKET_COUNT; ++i) {
         env_buckets[i] = enif_alloc_env();
         locks[i] = enif_rwlock_create("neural_table");
     }
+
+    key_pos = kp;
 }
 
 NeuralTable::~NeuralTable() {
@@ -17,43 +19,54 @@ NeuralTable::~NeuralTable() {
     }
 }
 
-ERL_NIF_TERM NeuralTable::MakeTable(ErlNifEnv *env, ERL_NIF_TERM name) {
+ERL_NIF_TERM NeuralTable::MakeTable(ErlNifEnv *env, ERL_NIF_TERM name, ERL_NIF_TERM key_pos) {
     char *atom;
     string key;
-    unsigned len = 0;
+    unsigned int len = 0,
+                 pos = 0;
 
-    if (!enif_is_atom(env, name)) { return enif_make_badarg(env); }
+    // Allocate space for the name of the table
     enif_get_atom_length(env, name, &len, ERL_NIF_LATIN1);
     atom = (char*)enif_alloc(len + 1);
 
+    // Fetch the value of the atom and store it in a string (because I can, that's why)
     enif_get_atom(env, name, atom, len + 1, ERL_NIF_LATIN1);
     key = atom;
+
+    // Deallocate that space
     enif_free(atom);
 
-    if (NeuralTable::tables.find(atom) != NeuralTable::tables.end()) { return enif_make_badarg(env); }
-    NeuralTable::tables[key] = new NeuralTable();
+    // Get the key position value
+    enif_get_uint(env, key_pos, &pos);
+
+    // Table already exists? Bad monkey!
+    if (NeuralTable::tables.find(key) != NeuralTable::tables.end()) { return enif_make_badarg(env); }
+
+    // All good. Make the table
+    NeuralTable::tables[key] = new NeuralTable(pos);
 
     return enif_make_atom(env, "ok");
 }
 
-NeuralTable* NeuralTable::getTable(ErlNifEnv *env, ERL_NIF_TERM name) {
+NeuralTable* NeuralTable::GetTable(ErlNifEnv *env, ERL_NIF_TERM name) {
     char *atom = NULL;
     string key;
     unsigned len = 0;
     NeuralTable *ret = NULL;
     table_set::const_iterator it;
 
-    if (!enif_is_atom(env, name)) { 
-        return NULL; 
-    }
-
+    // Allocate space for the table name
     enif_get_atom_length(env, name, &len, ERL_NIF_LATIN1);
     atom = (char*)enif_alloc(len + 1);
 
+    // Copy the table name into a string
     enif_get_atom(env, name, atom, len + 1, ERL_NIF_LATIN1);
     key = atom;
+    
+    // Deallocate that space
     enif_free(atom);
 
+    // Look for the table and return its pointer if found
     it = NeuralTable::tables.find(key);
     if (it != NeuralTable::tables.end()) { 
         ret = it->second;
@@ -65,10 +78,10 @@ NeuralTable* NeuralTable::getTable(ErlNifEnv *env, ERL_NIF_TERM name) {
 ERL_NIF_TERM NeuralTable::Insert(ErlNifEnv *env, ERL_NIF_TERM table, ERL_NIF_TERM key, ERL_NIF_TERM object) {
     NeuralTable *tb;
     ERL_NIF_TERM ret, old;
-    size_t entry_key = 0;
+    unsigned long int entry_key = 0;
 
     // Grab table or bail.
-    tb = getTable(env, table);
+    tb = GetTable(env, table);
     if (tb == NULL) { 
         return enif_make_badarg(env); 
     }
@@ -98,13 +111,45 @@ ERL_NIF_TERM NeuralTable::Insert(ErlNifEnv *env, ERL_NIF_TERM table, ERL_NIF_TER
     return ret;
 }
 
+ERL_NIF_TERM NeuralTable::InsertNew(ErlNifEnv *env, ERL_NIF_TERM table, ERL_NIF_TERM key, ERL_NIF_TERM object) {
+    NeuralTable *tb;
+    ERL_NIF_TERM ret, old;
+    unsigned long int entry_key = 0;
+
+    // Get the table or bail
+    tb = GetTable(env, table);
+    if (tb == NULL) {
+        return enif_make_badarg(env);
+    }
+
+    // Get the key value
+    enif_get_ulong(env, key, &entry_key);
+
+    // Get write lock for the key
+    tb->rwlock(entry_key);
+
+    if (tb->find(entry_key, old)) {
+        // Key was found. Return false and do not insert
+        ret = enif_make_atom(env, "false");
+    } else {
+        // Key was not found. Return true and insert
+        tb->put(entry_key, object);
+        ret = enif_make_atom(env, "true");
+    }
+
+    // Release write lock for the key
+    tb->rwunlock(entry_key);
+
+    return ret;
+}
+
 ERL_NIF_TERM NeuralTable::Increment(ErlNifEnv *env, ERL_NIF_TERM table, ERL_NIF_TERM key, ERL_NIF_TERM ops) {
     NeuralTable *tb;
     ERL_NIF_TERM ret, old;
     ERL_NIF_TERM it;
-    size_t entry_key = 0;
+    unsigned long int entry_key = 0;
 
-    tb = getTable(env, table);
+    tb = GetTable(env, table);
     if (tb == NULL) {
         return enif_make_badarg(env);
     }
@@ -171,7 +216,7 @@ ERL_NIF_TERM NeuralTable::Unshift(ErlNifEnv *env, ERL_NIF_TERM table, ERL_NIF_TE
     unsigned long int entry_key;
     ErlNifEnv *bucket_env;
 
-    tb = getTable(env, table);
+    tb = GetTable(env, table);
     if (tb == NULL) {
         return enif_make_badarg(env);
     }
@@ -250,7 +295,7 @@ ERL_NIF_TERM NeuralTable::Shift(ErlNifEnv *env, ERL_NIF_TERM table, ERL_NIF_TERM
     unsigned long int entry_key;
     ErlNifEnv *bucket_env;
 
-    tb = getTable(env, table);
+    tb = GetTable(env, table);
     if (tb == NULL) {
         return enif_make_badarg(env);
     }
@@ -331,7 +376,7 @@ ERL_NIF_TERM NeuralTable::Delete(ErlNifEnv *env, ERL_NIF_TERM table, ERL_NIF_TER
     ERL_NIF_TERM val, ret;
     unsigned long int entry_key;
 
-    tb = getTable(env, table);
+    tb = GetTable(env, table);
     if (tb == NULL) { return enif_make_badarg(env); }
 
     enif_get_ulong(env, key, &entry_key);
@@ -354,7 +399,7 @@ ERL_NIF_TERM NeuralTable::Empty(ErlNifEnv *env, ERL_NIF_TERM table) {
     NeuralTable *tb;
     int n = 0;
 
-    tb = getTable(env, table);
+    tb = GetTable(env, table);
     if (tb == NULL) { return enif_make_badarg(env); }
 
     // First, lock EVERY bucket. We want this to be an isolated operation.
@@ -383,7 +428,7 @@ ERL_NIF_TERM NeuralTable::Get(ErlNifEnv *env, ERL_NIF_TERM table, ERL_NIF_TERM k
     unsigned long int entry_key;
 
     // Acquire table handle, or quit if the table doesn't exist.
-    tb = getTable(env, table);
+    tb = GetTable(env, table);
     if (tb == NULL) { return enif_make_badarg(env); }
 
     // Get key value
@@ -405,7 +450,7 @@ ERL_NIF_TERM NeuralTable::Get(ErlNifEnv *env, ERL_NIF_TERM table, ERL_NIF_TERM k
 }
 
 ERL_NIF_TERM NeuralTable::Dump(ErlNifEnv *env, ERL_NIF_TERM table) {
-    NeuralTable *tb = getTable(env, table);
+    NeuralTable *tb = GetTable(env, table);
     ERL_NIF_TERM ret = enif_make_list(env, 0);
 
     for (int i = 0; i < BUCKET_COUNT; ++i) {
@@ -419,8 +464,15 @@ ERL_NIF_TERM NeuralTable::Dump(ErlNifEnv *env, ERL_NIF_TERM table) {
     return ret;
 }
 
+ERL_NIF_TERM NeuralTable::GetKeyPosition(ErlNifEnv *env, ERL_NIF_TERM table) {
+    NeuralTable *tb = GetTable(env, table);
+
+    if (tb == NULL) { return enif_make_badarg(env); }
+    return enif_make_uint(env, tb->key_pos);
+}
+
 ERL_NIF_TERM NeuralTable::GarbageCollect(ErlNifEnv *env, ERL_NIF_TERM table) {
-    NeuralTable *tb = getTable(env, table);
+    NeuralTable *tb = GetTable(env, table);
     if (tb == NULL) { return enif_make_badarg(env); }
 
     tb->gc();

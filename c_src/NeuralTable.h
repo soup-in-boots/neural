@@ -21,17 +21,19 @@ typedef unordered_map<unsigned long int, ERL_NIF_TERM> hash_table;
 
 class NeuralTable {
     public:
-        static ERL_NIF_TERM MakeTable(ErlNifEnv *env, ERL_NIF_TERM name);
+        static ERL_NIF_TERM MakeTable(ErlNifEnv *env, ERL_NIF_TERM name, ERL_NIF_TERM keypos);
         static ERL_NIF_TERM Insert(ErlNifEnv *env, ERL_NIF_TERM table, ERL_NIF_TERM key, ERL_NIF_TERM object);
+        static ERL_NIF_TERM InsertNew(ErlNifEnv *env, ERL_NIF_TERM table, ERL_NIF_TERM key, ERL_NIF_TERM object);
         static ERL_NIF_TERM Delete(ErlNifEnv *env, ERL_NIF_TERM table, ERL_NIF_TERM key);
         static ERL_NIF_TERM Empty(ErlNifEnv *env, ERL_NIF_TERM table);
         static ERL_NIF_TERM Get(ErlNifEnv *env, ERL_NIF_TERM table, ERL_NIF_TERM key);
-        static ERL_NIF_TERM GarbageCollect(ErlNifEnv *env, ERL_NIF_TERM table);
         static ERL_NIF_TERM Increment(ErlNifEnv *env, ERL_NIF_TERM table, ERL_NIF_TERM key, ERL_NIF_TERM ops);
         static ERL_NIF_TERM Shift(ErlNifEnv *env, ERL_NIF_TERM table, ERL_NIF_TERM key, ERL_NIF_TERM ops);
         static ERL_NIF_TERM Unshift(ErlNifEnv *env, ERL_NIF_TERM table, ERL_NIF_TERM key, ERL_NIF_TERM ops);
         static ERL_NIF_TERM Dump(ErlNifEnv *env, ERL_NIF_TERM table);
-        static NeuralTable* getTable(ErlNifEnv *env, ERL_NIF_TERM name);
+        static ERL_NIF_TERM GetKeyPosition(ErlNifEnv *env, ERL_NIF_TERM table);
+        static ERL_NIF_TERM GarbageCollect(ErlNifEnv *env, ERL_NIF_TERM table);
+        static NeuralTable* GetTable(ErlNifEnv *env, ERL_NIF_TERM name);
 
         void rlock(unsigned long int key) { enif_rwlock_rlock(locks[GET_LOCK(key)]); }
         void runlock(unsigned long int key) { enif_rwlock_runlock(locks[GET_LOCK(key)]); }
@@ -47,7 +49,7 @@ class NeuralTable {
     protected:
         static table_set tables;
 
-        NeuralTable();
+        NeuralTable(unsigned int kp);
         ~NeuralTable();
 
         unsigned int    garbage_cans[BUCKET_COUNT];

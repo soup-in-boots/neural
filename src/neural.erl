@@ -1,7 +1,14 @@
 -module(neural).
 
--export([new/1, insert/2, fetch/2, delete/2, empty/1, dump/1, garbage/1, increment/3, unshift/3, shift/3]).
+-export([new/2, empty/1, dump/1, garbage/1,     % Table operations
+         key_pos/1]).
+-export([lookup/2]).                            % Getters
+-export([insert/2, insert_new/2, delete/2]).    % Setters
+-export([increment/3, unshift/3, shift/3]).     % Delta operations
 -on_load(init/0).
+-record(table_opts, {
+        keypos      = 1 :: integer()
+    }).
 
 -define(nif_stub, nif_stub_error(?LINE)).
 nif_stub_error(Line) ->
@@ -22,27 +29,40 @@ init() ->
               end,
     erlang:load_nif(filename:join(PrivDir, ?MODULE), 0).
 
-new(Table) ->
-    make_table(Table),
+new(Table, Opts) ->
+    new(Table, Opts, #table_opts{}).
+
+new(Table, [{key_pos, KeyPos}|Opts], TableOpts) ->
+    new(Table, Opts, TableOpts#table_opts{keypos = KeyPos});
+new(Table, [], _TableOpts = #table_opts{keypos = KeyPos}) when is_integer(KeyPos) ->
+    make_table(Table, KeyPos),
     neural_gc_sup:start_child(Table),
     ok.
 
-make_table(_Table) ->
+make_table(_Table, _KeyPos) ->
     ?nif_stub.
 
-insert(Table, Object) when is_atom(Table) andalso is_tuple(Object) ->
-    insert(Table, erlang:phash2(element(1, Object)), Object).
+insert(Table, Object) when is_atom(Table), is_tuple(Object) ->
+    Key = element(key_pos(Table), Object),
+    insert(Table, erlang:phash2(Key), Object).
 
 insert(_Table, _Key, _Object) ->
     ?nif_stub.
 
+insert_new(Table, Object) when is_atom(Table), is_tuple(Object) ->
+    Key = element(key_pos(Table), Object),
+    insert_new(Table, erlang:phash2(Key), Object).
+
+insert_new(_Table, _Key, _Object) ->
+    ?nif_stub.
+
 increment(Table, Key, Value) when is_integer(Value) ->
-    [N] = increment(Table, Key, [{2, Value}]),
+    [N] = increment(Table, Key, [{key_pos(Table) + 1, Value}]),
     N;
 increment(Table, Key, Op = {Position, Value}) when is_integer(Position), is_integer(Value) ->
     [N] = increment(Table, Key, [Op]),
     N;
-increment(Table, Key, Op = [_|_]) ->
+increment(Table, Key, Op = [_|_]) when is_atom(Table) ->
     case lists:all(fun is_incr_op/1, Op) of
         true ->
             lists:reverse(do_increment(Table, erlang:phash2(Key), Op));
@@ -51,12 +71,12 @@ increment(Table, Key, Op = [_|_]) ->
     end.
 
 shift(Table, Key, Value) when is_integer(Value) ->
-    [R] = shift(Table, Key, [{2, Value}]),
+    [R] = shift(Table, Key, [{key_pos(Table) + 1, Value}]),
     R;
 shift(Table, Key, Op = {Position, Value}) when is_integer(Position), is_integer(Value) ->
     [R] = shift(Table, Key, [Op]),
     R;
-shift(Table, Key, Op = [_|_]) ->
+shift(Table, Key, Op = [_|_]) when is_atom(Table) ->
     case lists:all(fun is_shift_op/1, Op) of
         true ->
             lists:reverse(do_shift(Table, erlang:phash2(Key), Op));
@@ -67,7 +87,7 @@ shift(Table, Key, Op = [_|_]) ->
 unshift(Table, Key, Op = {Position, Value}) when is_integer(Position), is_list(Value) ->
     [R] = unshift(Table, Key, [Op]),
     R;
-unshift(Table, Key, Op = [_|_]) ->
+unshift(Table, Key, Op = [_|_]) when is_atom(Table) ->
     case lists:all(fun is_unshift_op/1, Op) of
         true ->
             lists:reverse(do_unshift(Table, erlang:phash2(Key), Op));
@@ -93,13 +113,13 @@ do_shift(_Table, _Key, _Op) ->
 do_unshift(_Table, _Key, _Op) ->
     ?nif_stub.
 
-fetch(Table, Key) ->
+lookup(Table, Key) when is_atom(Table) ->
     do_fetch(Table, erlang:phash2(Key)).
 
 do_fetch(_Table, _Key) ->
     ?nif_stub.
 
-delete(Table, Key) ->
+delete(Table, Key) when is_atom(Table) ->
     do_delete(Table, erlang:phash2(Key)).
 
 do_delete(_Table, _key) -> 
@@ -112,6 +132,9 @@ garbage(_Table) ->
     ?nif_stub.
 
 dump(_Table) ->
+    ?nif_stub.
+
+key_pos(_Table) ->
     ?nif_stub.
 
 %% ===================================================================
