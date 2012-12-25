@@ -1,5 +1,3 @@
-NEURAL
-======
 NEURAL: Erlang's Universal Record Adjustment Layer
 ------
 
