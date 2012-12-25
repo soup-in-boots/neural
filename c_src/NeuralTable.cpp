@@ -157,8 +157,171 @@ ERL_NIF_TERM NeuralTable::Increment(ErlNifEnv *env, ERL_NIF_TERM table, ERL_NIF_
 
 bailout:
         enif_free(new_tpl);
-        tb->rwunlock(entry_key);
+    } else {
+        ret = enif_make_badarg(env);
     }
+    tb->rwunlock(entry_key);
+
+    return ret;
+}
+
+ERL_NIF_TERM NeuralTable::Unshift(ErlNifEnv *env, ERL_NIF_TERM table, ERL_NIF_TERM key, ERL_NIF_TERM ops) {
+    NeuralTable *tb;
+    ERL_NIF_TERM ret, old, it;
+    unsigned long int entry_key;
+    ErlNifEnv *bucket_env;
+
+    tb = getTable(env, table);
+    if (tb == NULL) {
+        return enif_make_badarg(env);
+    }
+
+    enif_get_ulong(env, key, &entry_key);
+    bucket_env = tb->get_env(entry_key);
+
+    tb->rwlock(entry_key);
+    if (tb->find(entry_key, old)) {
+        const ERL_NIF_TERM  *old_tpl,
+                            *op_tpl;
+        ERL_NIF_TERM        *new_tpl;
+        int tb_arity = 0,
+            op_arity = 0;
+        unsigned long pos = 0;
+        unsigned int new_length = 0;
+        ERL_NIF_TERM op,
+                     unshift,
+                     copy_it,
+                     copy_val;
+
+        enif_get_tuple(bucket_env, old, &tb_arity, &old_tpl);
+        new_tpl = (ERL_NIF_TERM*)enif_alloc(sizeof(ERL_NIF_TERM) * tb_arity);
+        memcpy(new_tpl, old_tpl, sizeof(ERL_NIF_TERM) * tb_arity);
+
+        it = ops;
+        ret = enif_make_list(env, 0);
+
+        while (!enif_is_empty_list(env, it)) {
+            // Examine the operation.
+            enif_get_list_cell(env, it, &op, &it);          // op = hd(it), it = tl(it)
+            enif_get_tuple(env, op, &op_arity, &op_tpl);    // op_arity = tuple_size(op), op_tpl = [TplPos1, TplPos2]
+            enif_get_ulong(env, op_tpl[0], &pos);           // Tuple position to modify
+            unshift = op_tpl[1];                            // Values to unshfit
+
+            // Argument 1 of the operation tuple is position;
+            // make sure it's within the bounds of the tuple
+            // in the table.
+            if (pos <= 0 || pos > tb_arity) {
+                ret = enif_make_badarg(env);
+                goto bailout;
+            }
+            
+            // Make sure we were passed a list of things to push
+            // onto the posth element of the entry
+            if (!enif_is_list(env, unshift)) {
+                ret = enif_make_badarg(env);
+            }
+
+            // Now iterate over unshift, moving its values to
+            // the head of new_tpl[pos - 1] one by one
+            copy_it = unshift;
+            while (!enif_is_empty_list(env, copy_it)) {
+                enif_get_list_cell(env, copy_it, &copy_val, &copy_it);
+                new_tpl[pos - 1] = enif_make_list_cell(bucket_env, enif_make_copy(bucket_env, copy_val), new_tpl[pos - 1]);
+            }
+            enif_get_list_length(bucket_env, new_tpl[pos - 1], &new_length);
+            ret = enif_make_list_cell(env, enif_make_uint(env, new_length), ret);
+        }
+
+        tb->put(entry_key, enif_make_tuple_from_array(bucket_env, new_tpl, tb_arity));
+
+bailout:
+        enif_free(new_tpl);
+    } else {
+        ret = enif_make_badarg(env);
+    }
+    tb->rwunlock(entry_key);
+
+    return ret;
+}
+
+ERL_NIF_TERM NeuralTable::Shift(ErlNifEnv *env, ERL_NIF_TERM table, ERL_NIF_TERM key, ERL_NIF_TERM ops) {
+    NeuralTable *tb;
+    ERL_NIF_TERM ret, old, it;
+    unsigned long int entry_key;
+    ErlNifEnv *bucket_env;
+
+    tb = getTable(env, table);
+    if (tb == NULL) {
+        return enif_make_badarg(env);
+    }
+
+    enif_get_ulong(env, key, &entry_key);
+    bucket_env = tb->get_env(entry_key);
+
+    tb->rwlock(entry_key);
+    if (tb->find(entry_key, old)) {
+        const ERL_NIF_TERM *old_tpl;
+        const ERL_NIF_TERM *op_tpl;
+        ERL_NIF_TERM *new_tpl;
+        int tb_arity = 0,
+            op_arity = 0;
+        unsigned long pos = 0,
+                      count = 0;
+        ERL_NIF_TERM op, list, shifted;
+
+        enif_get_tuple(bucket_env, old, &tb_arity, &old_tpl);
+        new_tpl = (ERL_NIF_TERM*)enif_alloc(tb_arity * sizeof(ERL_NIF_TERM));
+        memcpy(new_tpl, old_tpl, sizeof(ERL_NIF_TERM) * tb_arity);
+
+        it = ops;
+        ret = enif_make_list(env, 0);
+
+        while(!enif_is_empty_list(env, it)) {
+            enif_get_list_cell(env, it, &op, &it);
+            enif_get_tuple(env, op, &op_arity, &op_tpl);
+            enif_get_ulong(env, op_tpl[0], &pos);
+            enif_get_ulong(env, op_tpl[1], &count);
+
+            if (pos <= 0 || pos > tb_arity) {
+                ret = enif_make_badarg(env);
+                goto bailout;
+            }
+
+            if (!enif_is_list(env, new_tpl[pos -1])) {
+                ret = enif_make_badarg(env);
+                goto bailout;
+            }
+
+            shifted = enif_make_list(env, 0);
+            if (count > 0) {
+                ERL_NIF_TERM copy_it = new_tpl[pos - 1],
+                             val;
+                int i = 0;
+                while (i < count && !enif_is_empty_list(bucket_env, copy_it)) {
+                    enif_get_list_cell(bucket_env, copy_it, &val, &copy_it);
+                    ++i;
+                    shifted = enif_make_list_cell(env, enif_make_copy(env, val), shifted);
+                }
+                new_tpl[pos - 1] = copy_it;
+            } else if (count < 0) {
+                ERL_NIF_TERM copy_it = new_tpl[pos - 1],
+                             val;
+                while (!enif_is_empty_list(bucket_env, copy_it)) {
+                    enif_get_list_cell(bucket_env, copy_it, &val, &copy_it);
+                    shifted = enif_make_list_cell(env, enif_make_copy(env, val), shifted);
+                }
+                new_tpl[pos - 1] = copy_it;
+            }
+            ret = enif_make_list_cell(env, shifted, ret);
+        }
+
+        tb->put(entry_key, enif_make_tuple_from_array(bucket_env, new_tpl, tb_arity));
+bailout:
+        enif_free(new_tpl);
+    } else {
+        ret = enif_make_badarg(env);
+    }
+    tb->rwunlock(entry_key);
 
     return ret;
 }
@@ -185,6 +348,33 @@ ERL_NIF_TERM NeuralTable::Delete(ErlNifEnv *env, ERL_NIF_TERM table, ERL_NIF_TER
     tb->rwunlock(entry_key);
 
     return ret;
+}
+
+ERL_NIF_TERM NeuralTable::Empty(ErlNifEnv *env, ERL_NIF_TERM table) {
+    NeuralTable *tb;
+    int n = 0;
+
+    tb = getTable(env, table);
+    if (tb == NULL) { return enif_make_badarg(env); }
+
+    // First, lock EVERY bucket. We want this to be an isolated operation.
+    for (n = 0; n < BUCKET_COUNT; ++n) {
+        enif_rwlock_rwlock(tb->locks[n]);
+    }
+
+    // Now clear the table
+    for (n = 0; n < BUCKET_COUNT; ++n) {
+        tb->hash_buckets[n].clear();
+        enif_clear_env(tb->env_buckets[n]);
+        tb->garbage_cans[n] = 0;
+    }
+
+    // Now unlock every bucket.
+    for (n = 0; n < BUCKET_COUNT; ++n) {
+        enif_rwlock_rwunlock(tb->locks[n]);
+    }
+
+    return enif_make_atom(env, "ok");
 }
 
 ERL_NIF_TERM NeuralTable::Get(ErlNifEnv *env, ERL_NIF_TERM table, ERL_NIF_TERM key) {
@@ -219,9 +409,11 @@ ERL_NIF_TERM NeuralTable::Dump(ErlNifEnv *env, ERL_NIF_TERM table) {
     ERL_NIF_TERM ret = enif_make_list(env, 0);
 
     for (int i = 0; i < BUCKET_COUNT; ++i) {
+        enif_rwlock_rlock(tb->locks[i]);
         for (hash_table::iterator it = tb->hash_buckets[i].begin(); it != tb->hash_buckets[i].end(); ++it) {
             ret = enif_make_list_cell(env, enif_make_copy(env, it->second), ret);
         }
+        enif_rwlock_runlock(tb->locks[i]);
     }
 
     return ret;

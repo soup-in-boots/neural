@@ -1,6 +1,6 @@
 -module(neural).
 
--export([new/1, insert/2, fetch/2, delete/2, dump/1, garbage/1, increment/3]).
+-export([new/1, insert/2, fetch/2, delete/2, empty/1, dump/1, garbage/1, increment/3, unshift/3, shift/3]).
 -on_load(init/0).
 
 -define(nif_stub, nif_stub_error(?LINE)).
@@ -20,7 +20,6 @@ init() ->
                   Path ->
                       Path
               end,
-            io:format("~p~n", [filename:join(PrivDir, ?MODULE)]),
     erlang:load_nif(filename:join(PrivDir, ?MODULE), 0).
 
 new(Table) ->
@@ -51,10 +50,47 @@ increment(Table, Key, Op = [_|_]) ->
             error(badarg)
     end.
 
+shift(Table, Key, Value) when is_integer(Value) ->
+    [R] = shift(Table, Key, [{2, Value}]),
+    R;
+shift(Table, Key, Op = {Position, Value}) when is_integer(Position), is_integer(Value) ->
+    [R] = shift(Table, Key, [Op]),
+    R;
+shift(Table, Key, Op = [_|_]) ->
+    case lists:all(fun is_shift_op/1, Op) of
+        true ->
+            lists:reverse(do_shift(Table, erlang:phash2(Key), Op));
+        false ->
+            error(badarg)
+    end.
+
+unshift(Table, Key, Op = {Position, Value}) when is_integer(Position), is_list(Value) ->
+    [R] = unshift(Table, Key, [Op]),
+    R;
+unshift(Table, Key, Op = [_|_]) ->
+    case lists:all(fun is_unshift_op/1, Op) of
+        true ->
+            lists:reverse(do_unshift(Table, erlang:phash2(Key), Op));
+        false ->
+            error(badarg)
+    end.
+
 is_incr_op({P,V}) when is_integer(P), is_integer(V) -> true;
 is_incr_op(_) -> false.
 
+is_shift_op({P,V}) when is_integer(P), is_integer(V) -> true;
+is_shift_op(_) -> false.
+
+is_unshift_op({P,L}) when is_integer(P), is_list(L) -> true;
+is_unshift_op(_) -> false.
+
 do_increment(_Table, _Key, _Op) ->
+    ?nif_stub.
+
+do_shift(_Table, _Key, _Op) ->
+    ?nif_stub.
+
+do_unshift(_Table, _Key, _Op) ->
     ?nif_stub.
 
 fetch(Table, Key) ->
@@ -67,6 +103,9 @@ delete(Table, Key) ->
     do_delete(Table, erlang:phash2(Key)).
 
 do_delete(_Table, _key) -> 
+    ?nif_stub.
+
+empty(_Table) ->
     ?nif_stub.
 
 garbage(_Table) ->

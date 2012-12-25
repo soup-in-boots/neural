@@ -24,11 +24,12 @@ class NeuralTable {
         static ERL_NIF_TERM MakeTable(ErlNifEnv *env, ERL_NIF_TERM name);
         static ERL_NIF_TERM Insert(ErlNifEnv *env, ERL_NIF_TERM table, ERL_NIF_TERM key, ERL_NIF_TERM object);
         static ERL_NIF_TERM Delete(ErlNifEnv *env, ERL_NIF_TERM table, ERL_NIF_TERM key);
+        static ERL_NIF_TERM Empty(ErlNifEnv *env, ERL_NIF_TERM table);
         static ERL_NIF_TERM Get(ErlNifEnv *env, ERL_NIF_TERM table, ERL_NIF_TERM key);
         static ERL_NIF_TERM GarbageCollect(ErlNifEnv *env, ERL_NIF_TERM table);
         static ERL_NIF_TERM Increment(ErlNifEnv *env, ERL_NIF_TERM table, ERL_NIF_TERM key, ERL_NIF_TERM ops);
-//        static ERL_NIF_TERM Shift(ErlNifEnv *env, ERL_NIF_TERM table, ERL_NIF_TERM key, ERL_NIF_TERM ops);
-//        static ERL_NIF_TERM Unshift(ErlNifEnv *env, ERL_NIF_TERM table, ERL_NIF_TERM key, ERL_NIF_TERM ops);
+        static ERL_NIF_TERM Shift(ErlNifEnv *env, ERL_NIF_TERM table, ERL_NIF_TERM key, ERL_NIF_TERM ops);
+        static ERL_NIF_TERM Unshift(ErlNifEnv *env, ERL_NIF_TERM table, ERL_NIF_TERM key, ERL_NIF_TERM ops);
         static ERL_NIF_TERM Dump(ErlNifEnv *env, ERL_NIF_TERM table);
         static NeuralTable* getTable(ErlNifEnv *env, ERL_NIF_TERM name);
 
