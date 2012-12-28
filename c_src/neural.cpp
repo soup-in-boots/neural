@@ -11,17 +11,20 @@ static ERL_NIF_TERM neural_unshift(ErlNifEnv *env, int argc, const ERL_NIF_TERM 
 static ERL_NIF_TERM neural_shift(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]);
 static ERL_NIF_TERM neural_get(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]);
 static ERL_NIF_TERM neural_delete(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]);
-static ERL_NIF_TERM neural_empty(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]);
 static ERL_NIF_TERM neural_garbage(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]);
+static ERL_NIF_TERM neural_garbage_size(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]);
+static ERL_NIF_TERM neural_empty(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]);
+static ERL_NIF_TERM neural_drain(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]);
 static ERL_NIF_TERM neural_dump(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]);
 static ERL_NIF_TERM neural_key_pos(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]);
 
 static ErlNifFunc nif_funcs[] =
 {
     {"make_table", 2, neural_new},
-    {"dump", 1, neural_dump},
     {"do_fetch", 2, neural_get},
     {"do_delete", 2, neural_delete},
+    {"do_dump", 1, neural_dump},
+    {"do_drain", 1, neural_drain},
     {"empty", 1, neural_empty},
     {"insert", 3, neural_put},
     {"insert_new", 3, neural_put_new},
@@ -29,6 +32,7 @@ static ErlNifFunc nif_funcs[] =
     {"do_unshift", 3, neural_unshift},
     {"do_shift", 3, neural_shift},
     {"garbage", 1, neural_garbage},
+    {"garbage_size", 1, neural_garbage_size},
     {"key_pos", 1, neural_key_pos}
 };
 
@@ -87,10 +91,22 @@ static ERL_NIF_TERM neural_dump(ErlNifEnv *env, int argc, const ERL_NIF_TERM arg
     return NeuralTable::Dump(env, argv[0]);
 }
 
+static ERL_NIF_TERM neural_drain(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]) {
+    if (!enif_is_atom(env, argv[0])) { return enif_make_badarg(env); }
+
+    return NeuralTable::Drain(env, argv[0]);
+}
+
 static ERL_NIF_TERM neural_garbage(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]) {
     if (!enif_is_atom(env, argv[0])) { return enif_make_badarg(env); }
 
     return NeuralTable::GarbageCollect(env, argv[0]);
+}
+
+static ERL_NIF_TERM neural_garbage_size(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]) {
+    if (!enif_is_atom(env, argv[0])) { return enif_make_badarg(env); }
+
+    return NeuralTable::GarbageSize(env, argv[0]);
 }
 
 static void neural_resource_cleanup(ErlNifEnv* env, void* arg)
@@ -104,4 +120,8 @@ static int on_load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info)
     return 0;
 }
 
-ERL_NIF_INIT(neural, nif_funcs, &on_load, NULL, NULL, NULL);
+static void on_unload(ErlNifEnv *env, void *priv_data) {
+    //NeuralTable::Shutdown();
+}
+
+ERL_NIF_INIT(neural, nif_funcs, &on_load, NULL, NULL, &on_unload);

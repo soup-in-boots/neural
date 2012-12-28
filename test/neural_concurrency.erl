@@ -5,8 +5,7 @@
 -define(NUM_KEYS, 1000).
 
 test() ->
-    application:start(neural),
-    neural:new(test),
+    neural:new(test, []),
     io:format("Insert time: ~p~n", [begin {Dur, _} = timer:tc(fun() -> [ neural:insert(test, {Key, 0, 0, 0}) || Key <- ?KEYS ] end), Dur end]),
     Pids = [ spawn(fun neural_worker/0) || _ <- lists:seq(1,64) ],
     Refs = lists:flatten([ [ begin Ref = make_ref(), Pid ! {go, self(), Ref}, Ref end || Pid <- Pids ] || _ <- lists:seq(1, 1000) ]),

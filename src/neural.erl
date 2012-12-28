@@ -1,6 +1,7 @@
 -module(neural).
 
--export([new/2, empty/1, dump/1, garbage/1,     % Table operations
+-export([new/2, empty/1, drain/1, dump/1,       % Table operations
+         garbage/1, garbage_size/1, 
          key_pos/1]).
 -export([lookup/2]).                            % Getters
 -export([insert/2, insert_new/2, delete/2]).    % Setters
@@ -35,9 +36,7 @@ new(Table, Opts) ->
 new(Table, [{key_pos, KeyPos}|Opts], TableOpts) ->
     new(Table, Opts, TableOpts#table_opts{keypos = KeyPos});
 new(Table, [], _TableOpts = #table_opts{keypos = KeyPos}) when is_integer(KeyPos) ->
-    make_table(Table, KeyPos),
-    neural_gc_sup:start_child(Table),
-    ok.
+    make_table(Table, KeyPos).
 
 make_table(_Table, _KeyPos) ->
     ?nif_stub.
@@ -125,17 +124,36 @@ delete(Table, Key) when is_atom(Table) ->
 do_delete(_Table, _key) -> 
     ?nif_stub.
 
-empty(_Table) ->
-    ?nif_stub.
-
 garbage(_Table) ->
     ?nif_stub.
 
-dump(_Table) ->
+garbage_size(_Table) ->
+    ?nif_stub.
+
+empty(_Table) ->
+    ?nif_stub.
+
+drain(Table) ->
+    '$neural_batch_wait' = do_drain(Table),
+    wait_batch_response().
+
+do_drain(_Table) ->
+    ?nif_stub.
+
+dump(Table) ->
+    '$neural_batch_wait' = do_dump(Table),
+    wait_batch_response().
+
+do_dump(_Table) ->
     ?nif_stub.
 
 key_pos(_Table) ->
     ?nif_stub.
+
+wait_batch_response() ->
+    receive
+        {'$neural_batch_response', Response} -> Response
+    end.
 
 %% ===================================================================
 %% EUnit tests
