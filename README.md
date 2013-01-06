@@ -85,7 +85,9 @@ Use neural:drain/1 to read and remove the entire contents of the table
 
 Use neural:erase/1 to remove the entire contents of the table
 
-Each function takes only the table name as an argument.
+Each function takes only the table name as an argument. Batch operations are executed in a separate thread, and the results are sent via message passing to the calling process. This is because calling a long-running NIF call from an erlang process can cause problems with Erlang's schedulers. Other potentially long-running calls could eventually be moved into batch threads as well.
 
 ### Garbage Collection ###
 NEURAL stores terms by copying them to a process-independent environment. Most modifications to the data therein will therefore result in discarded terms. For this reason, NEURAL has to deliberately collect garbage (erlang terms are valid for the entire life of their environment).
+
+It does this by keeping track of the approximate word size of each term that is discard, and, when the amount discarded surpasses a certain threshold, triggers the garbage collection condition. Each table has a dedicated garbage collection thread which triggers on this condition. The garbage collection thread walks through each bucket in the table, copies each bucket's terms to a new environment, and frees the old environment.
