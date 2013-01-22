@@ -9,6 +9,7 @@ static ERL_NIF_TERM neural_put_new(ErlNifEnv *env, int argc, const ERL_NIF_TERM 
 static ERL_NIF_TERM neural_increment(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]);
 static ERL_NIF_TERM neural_unshift(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]);
 static ERL_NIF_TERM neural_shift(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]);
+static ERL_NIF_TERM neural_swap(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]);
 static ERL_NIF_TERM neural_get(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]);
 static ERL_NIF_TERM neural_delete(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]);
 static ERL_NIF_TERM neural_garbage(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]);
@@ -31,6 +32,7 @@ static ErlNifFunc nif_funcs[] =
     {"do_increment", 3, neural_increment},
     {"do_unshift", 3, neural_unshift},
     {"do_shift", 3, neural_shift},
+    {"do_swap", 3, neural_swap},
     {"garbage", 1, neural_garbage},
     {"garbage_size", 1, neural_garbage_size},
     {"key_pos", 1, neural_key_pos}
@@ -69,6 +71,10 @@ static ERL_NIF_TERM neural_shift(ErlNifEnv *env, int argc, const ERL_NIF_TERM ar
 
 static ERL_NIF_TERM neural_unshift(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]) {
     return NeuralTable::Unshift(env, argv[0], argv[1], argv[2]);
+}
+
+static ERL_NIF_TERM neural_swap(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]){
+    return NeuralTable::Swap(env, argv[0], argv[1], argv[2]);
 }
 
 static ERL_NIF_TERM neural_get(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]) {

@@ -5,7 +5,7 @@
          key_pos/1]).
 -export([lookup/2]).                            % Getters
 -export([insert/2, insert_new/2, delete/2]).    % Setters
--export([increment/3, unshift/3, shift/3]).     % Delta operations
+-export([increment/3, unshift/3, shift/3, swap/3]).     % Delta operations
 -on_load(init/0).
 -record(table_opts, {
         keypos      = 1 :: integer()
@@ -89,7 +89,18 @@ unshift(Table, Key, Op = {Position, Value}) when is_integer(Position), is_list(V
 unshift(Table, Key, Op = [_|_]) when is_atom(Table) ->
     case lists:all(fun is_unshift_op/1, Op) of
         true ->
-            lists:reverse(do_unshift(Table, erlang:phash2(Key), Op));
+            lists:reverse(do_unshift(Table, erlang:phash2(Key), Op), []);
+        false ->
+            error(badarg)
+    end.
+
+swap(Table, Key, Op = {Position, _Value}) when is_integer(Position) ->
+    [R] = swap(Table, Key, [Op]),
+    R;
+swap(Table, Key, Op = [_|_]) when is_atom(Table) ->
+    case lists:all(fun is_swap_op/1, Op) of 
+        true ->
+            lists:reverse(do_swap(Table, erlang:phash2(Key), Op));
         false ->
             error(badarg)
     end.
@@ -103,6 +114,9 @@ is_shift_op(_) -> false.
 is_unshift_op({P,L}) when is_integer(P), is_list(L) -> true;
 is_unshift_op(_) -> false.
 
+is_swap_op({P,V}) when is_integer(P) -> true;
+is_swap_op(_) -> false.
+
 do_increment(_Table, _Key, _Op) ->
     ?nif_stub.
 
@@ -110,6 +124,9 @@ do_shift(_Table, _Key, _Op) ->
     ?nif_stub.
 
 do_unshift(_Table, _Key, _Op) ->
+    ?nif_stub.
+
+do_swap(_Table, _Key, _Op) ->
     ?nif_stub.
 
 lookup(Table, Key) when is_atom(Table) ->

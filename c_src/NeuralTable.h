@@ -34,6 +34,7 @@ class NeuralTable {
         static ERL_NIF_TERM Increment(ErlNifEnv *env, ERL_NIF_TERM table, ERL_NIF_TERM key, ERL_NIF_TERM ops);
         static ERL_NIF_TERM Shift(ErlNifEnv *env, ERL_NIF_TERM table, ERL_NIF_TERM key, ERL_NIF_TERM ops);
         static ERL_NIF_TERM Unshift(ErlNifEnv *env, ERL_NIF_TERM table, ERL_NIF_TERM key, ERL_NIF_TERM ops);
+        static ERL_NIF_TERM Swap(ErlNifEnv *env, ERL_NIF_TERM table, ERL_NIF_TERM key, ERL_NIF_TERM ops);
         static ERL_NIF_TERM Dump(ErlNifEnv *env, ERL_NIF_TERM table);
         static ERL_NIF_TERM Drain(ErlNifEnv *env, ERL_NIF_TERM table);
         static ERL_NIF_TERM GetKeyPosition(ErlNifEnv *env, ERL_NIF_TERM table);

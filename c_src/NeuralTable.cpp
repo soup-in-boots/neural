@@ -455,6 +455,65 @@ bailout:
     return ret;
 }
 
+ERL_NIF_TERM NeuralTable::Swap(ErlNifEnv *env, ERL_NIF_TERM table, ERL_NIF_TERM key, ERL_NIF_TERM ops) {
+    NeuralTable *tb;
+    ERL_NIF_TERM ret, old, it;
+    unsigned long int entry_key;
+    ErlNifEnv *bucket_env;
+
+    tb = GetTable(env, table);
+    if (tb == NULL) {
+        return enif_make_badarg(env);
+    }
+
+    enif_get_ulong(env, key, &entry_key);
+
+    tb->rwlock(entry_key);
+    bucket_env = tb->get_env(entry_key);
+    if (tb->find(entry_key, old)) {
+        const ERL_NIF_TERM *old_tpl;
+        const ERL_NIF_TERM *op_tpl;
+        ERL_NIF_TERM *new_tpl;
+        int tb_arity = 0,
+            op_arity = 0;
+        unsigned long pos = 0;
+        ERL_NIF_TERM op, list, shifted, reclaim;
+
+        enif_get_tuple(bucket_env, old, &tb_arity, &old_tpl);
+        new_tpl = (ERL_NIF_TERM*)enif_alloc(tb_arity * sizeof(ERL_NIF_TERM));
+        memcpy(new_tpl, old_tpl, sizeof(ERL_NIF_TERM) * tb_arity);
+
+        it = ops;
+        ret = enif_make_list(env, 0);
+        reclaim = enif_make_list(bucket_env, 0);
+
+        while (!enif_is_empty_list(env, it)) {
+            enif_get_list_cell(env, it, &op, &it);
+            enif_get_tuple(env, op, &op_arity, &op_tpl);
+            enif_get_ulong(env, op_tpl[0], &pos);
+
+            if (pos <= 0 || pos > tb_arity) {
+                ret = enif_make_badarg(env);
+                goto bailout;
+            }
+
+            reclaim = enif_make_list_cell(bucket_env, new_tpl[pos - 1], reclaim);
+            ret = enif_make_list_cell(env, enif_make_copy(env, new_tpl[pos -1]), ret);
+            new_tpl[pos - 1] = enif_make_copy(bucket_env, op_tpl[1]);
+        }
+
+        tb->put(entry_key, enif_make_tuple_from_array(bucket_env, new_tpl, tb_arity));
+        tb->reclaim(entry_key, reclaim);
+bailout:
+        enif_free(new_tpl);
+    } else {
+        ret = enif_make_badarg(env);
+    }
+    tb->rwunlock(entry_key);
+
+    return ret;
+}
+
 ERL_NIF_TERM NeuralTable::Delete(ErlNifEnv *env, ERL_NIF_TERM table, ERL_NIF_TERM key) {
     NeuralTable *tb;
     ERL_NIF_TERM val, ret;
