@@ -302,9 +302,9 @@ ERL_NIF_TERM NeuralTable::Unshift(ErlNifEnv *env, ERL_NIF_TERM table, ERL_NIF_TE
     }
 
     enif_get_ulong(env, key, &entry_key);
-    bucket_env = tb->get_env(entry_key);
 
     tb->rwlock(entry_key);
+    bucket_env = tb->get_env(entry_key);
     if (tb->find(entry_key, old)) {
         const ERL_NIF_TERM  *old_tpl,
                             *op_tpl;
@@ -381,9 +381,9 @@ ERL_NIF_TERM NeuralTable::Shift(ErlNifEnv *env, ERL_NIF_TERM table, ERL_NIF_TERM
     }
 
     enif_get_ulong(env, key, &entry_key);
-    bucket_env = tb->get_env(entry_key);
 
     tb->rwlock(entry_key);
+    bucket_env = tb->get_env(entry_key);
     if (tb->find(entry_key, old)) {
         const ERL_NIF_TERM *old_tpl;
         const ERL_NIF_TERM *op_tpl;
