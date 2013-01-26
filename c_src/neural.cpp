@@ -123,6 +123,7 @@ static void neural_resource_cleanup(ErlNifEnv* env, void* arg)
 
 static int on_load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info)
 {
+    NeuralTable::Initialize();
     return 0;
 }
 

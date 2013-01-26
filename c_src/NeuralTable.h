@@ -46,6 +46,9 @@ class NeuralTable {
         static void* DoGarbageCollection(void *table);
         static void* DoBatchOperations(void *table);
         static void* DoReclamation(void *table);
+        static void Initialize() {
+            table_mutex = enif_mutex_create("neural_table_maker");
+        }
         static void Shutdown() {
             running = false;
             table_set::iterator it(tables.begin());
@@ -55,6 +58,8 @@ class NeuralTable {
                 tables.erase(it);
                 it = tables.begin();
             }
+
+            enif_mutex_destroy(table_mutex);
         }
 
         void rlock(unsigned long int key) { enif_rwlock_rlock(locks[GET_LOCK(key)]); }
@@ -80,6 +85,7 @@ class NeuralTable {
     protected:
         static table_set tables;
         static atomic<bool> running;
+        static ErlNifMutex *table_mutex;
 
         struct BatchJob {
             ErlNifPid pid;

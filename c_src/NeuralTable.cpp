@@ -15,6 +15,7 @@
 
 table_set NeuralTable::tables;
 atomic<bool> NeuralTable::running(true);
+ErlNifMutex *NeuralTable::table_mutex;
 
 NeuralTable::NeuralTable(unsigned int kp) {
     for (int i = 0;  i < BUCKET_COUNT; ++i) {
@@ -51,6 +52,7 @@ ERL_NIF_TERM NeuralTable::MakeTable(ErlNifEnv *env, ERL_NIF_TERM name, ERL_NIF_T
     string key;
     unsigned int len = 0,
                  pos = 0;
+    ERL_NIF_TERM ret;
 
     // Allocate space for the name of the table
     enif_get_atom_length(env, name, &len, ERL_NIF_LATIN1);
@@ -66,13 +68,18 @@ ERL_NIF_TERM NeuralTable::MakeTable(ErlNifEnv *env, ERL_NIF_TERM name, ERL_NIF_T
     // Get the key position value
     enif_get_uint(env, key_pos, &pos);
 
-    // Table already exists? Bad monkey!
-    if (NeuralTable::tables.find(key) != NeuralTable::tables.end()) { return enif_make_badarg(env); }
+    enif_mutex_lock(table_mutex);
+    if (NeuralTable::tables.find(key) != NeuralTable::tables.end()) { 
+        // Table already exists? Bad monkey!
+        ret = enif_make_badarg(env); 
+    } else {
+        // All good. Make the table
+        NeuralTable::tables[key] = new NeuralTable(pos);
+        ret = enif_make_atom(env, "ok");
+    }
+    enif_mutex_unlock(table_mutex);
 
-    // All good. Make the table
-    NeuralTable::tables[key] = new NeuralTable(pos);
-
-    return enif_make_atom(env, "ok");
+    return ret;
 }
 
 /* ================================================================
