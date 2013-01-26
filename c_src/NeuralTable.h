@@ -8,6 +8,8 @@
 #include <string.h>
 #include <unordered_map>
 #include <queue>
+#include <atomic>
+#include <unistd.h>
 
 #define BUCKET_COUNT 64
 #define BUCKET_MASK (BUCKET_COUNT - 1)
@@ -43,6 +45,17 @@ class NeuralTable {
         static NeuralTable* GetTable(ErlNifEnv *env, ERL_NIF_TERM name);
         static void* DoGarbageCollection(void *table);
         static void* DoBatchOperations(void *table);
+        static void* DoReclamation(void *table);
+        static void Shutdown() {
+            running = false;
+            table_set::iterator it(tables.begin());
+
+            while (it != tables.end()) {
+                delete it->second;
+                tables.erase(it);
+                it = tables.begin();
+            }
+        }
 
         void rlock(unsigned long int key) { enif_rwlock_rlock(locks[GET_LOCK(key)]); }
         void runlock(unsigned long int key) { enif_rwlock_runlock(locks[GET_LOCK(key)]); }
@@ -66,7 +79,7 @@ class NeuralTable {
 
     protected:
         static table_set tables;
-        static bool running;
+        static atomic<bool> running;
 
         struct BatchJob {
             ErlNifPid pid;
@@ -79,10 +92,12 @@ class NeuralTable {
         unsigned int    garbage_cans[BUCKET_COUNT];
         hash_table      hash_buckets[BUCKET_COUNT];
         ErlNifEnv       *env_buckets[BUCKET_COUNT];
+        ERL_NIF_TERM    reclaimable[BUCKET_COUNT];
         ErlNifRWLock    *locks[BUCKET_COUNT];
         ErlNifCond      *gc_cond;
         ErlNifMutex     *gc_mutex;
         ErlNifTid       gc_tid;
+        ErlNifTid       rc_tid;
         ErlNifCond      *batch_cond;
         ErlNifMutex     *batch_mutex;
         queue<BatchJob> batch_jobs;

@@ -14,12 +14,15 @@
  */
 
 table_set NeuralTable::tables;
-bool NeuralTable::running = true;
+atomic<bool> NeuralTable::running(true);
 
 NeuralTable::NeuralTable(unsigned int kp) {
     for (int i = 0;  i < BUCKET_COUNT; ++i) {
-        env_buckets[i] = enif_alloc_env();
+        ErlNifEnv *env = enif_alloc_env();
+        env_buckets[i] = env;
         locks[i] = enif_rwlock_create("neural_table");
+        garbage_cans[i] = 0;
+        reclaimable[i] = enif_make_list(env, 0);
     }
 
     start_gc();
@@ -555,6 +558,7 @@ ERL_NIF_TERM NeuralTable::Empty(ErlNifEnv *env, ERL_NIF_TERM table) {
         tb->hash_buckets[n].clear();
         enif_clear_env(tb->env_buckets[n]);
         tb->garbage_cans[n] = 0;
+        tb->reclaimable[n] = enif_make_list(tb->env_buckets[n], 0);
     }
 
     // Now unlock every bucket.
@@ -652,8 +656,8 @@ void* NeuralTable::DoGarbageCollection(void *table) {
 
     enif_mutex_lock(tb->gc_mutex);
 
-    while (running) {
-        while (running && tb->garbage_size() < RECLAIM_THRESHOLD) {
+    while (running.load(memory_order_acquire)) {
+        while (running.load(memory_order_acquire) && tb->garbage_size() < RECLAIM_THRESHOLD) {
             enif_cond_wait(tb->gc_cond, tb->gc_mutex);
         }
         tb->gc();
@@ -664,13 +668,44 @@ void* NeuralTable::DoGarbageCollection(void *table) {
     return NULL;
 }
 
+void* NeuralTable::DoReclamation(void *table) {
+    const int max_eat = 5;
+    NeuralTable *tb = (NeuralTable*)table;
+    int i = 0, c = 0, t = 0;;
+    ERL_NIF_TERM tl, hd;
+    ErlNifEnv *env;
+
+    while (running.load(memory_order_acquire)) {
+        for (i = 0; i < BUCKET_COUNT; ++i) {
+            c = 0;
+            t = 0;
+            tb->rwlock(i);
+            env = tb->get_env(i);
+            tl = tb->reclaimable[i];
+            while (c++ < max_eat && !enif_is_empty_list(env, tl)) {
+                enif_get_list_cell(env, tl, &hd, &tl);
+                tb->garbage_cans[i] += estimate_size(env, hd);
+                t += tb->garbage_cans[i];
+            }
+            tb->rwunlock(i);
+
+            if (t >= RECLAIM_THRESHOLD) {
+                enif_cond_signal(tb->gc_cond);
+            }
+        }
+        usleep(50000);
+    }
+
+    return NULL;
+}
+
 void* NeuralTable::DoBatchOperations(void *table) {
     NeuralTable *tb = (NeuralTable*)table;
 
     enif_mutex_lock(tb->batch_mutex);
 
-    while (running) {
-        while (running && tb->batch_jobs.empty()) {
+    while (running.load(memory_order_acquire)) {
+        while (running.load(memory_order_acquire) && tb->batch_jobs.empty()) {
             enif_cond_wait(tb->batch_cond, tb->batch_mutex);
         }
         BatchJob job = tb->batch_jobs.front();
@@ -693,10 +728,18 @@ void NeuralTable::start_gc() {
     if (ret != 0) {
         printf("[neural_gc] Can't create GC thread. Error Code: %d\r\n", ret);
     }
+
+    // Start the reclaimer after the garbage collector.
+    ret = enif_thread_create("neural_reclaimer", &rc_tid, NeuralTable::DoReclamation, (void*)this, NULL);
+    if (ret != 0) {
+        printf("[neural_gc] Can't create reclamation thread. Error Code: %d\r\n", ret);
+    }
 }
 
 void NeuralTable::stop_gc() {
     enif_cond_signal(gc_cond);
+    // Join the reclaimer before the garbage collector.
+    enif_thread_join(rc_tid, NULL);
     enif_thread_join(gc_tid, NULL);
 }
 
@@ -772,9 +815,10 @@ void NeuralTable::batch_drain(ErlNifPid pid) {
         for (hash_table::iterator it = hash_buckets[i].begin(); it != hash_buckets[i].end(); ++it) {
             value = enif_make_list_cell(env, enif_make_copy(env, it->second), value);
         }
+        enif_clear_env(env_buckets[i]);
         hash_buckets[i].clear();
         garbage_cans[i] = 0;
-        enif_clear_env(env_buckets[i]);
+        reclaimable[i] = enif_make_list(env_buckets[i], 0);
 
         enif_rwlock_rwunlock(locks[i]);
     }
@@ -807,18 +851,9 @@ void NeuralTable::batch_dump(ErlNifPid pid) {
 }
 
 void NeuralTable::reclaim(unsigned long int key, ERL_NIF_TERM term) {
+    int bucket = GET_BUCKET(key);
     ErlNifEnv *env = get_env(key);
-    unsigned long int size = estimate_size(env, term);
-    unsigned long int total = 0;
-    garbage_cans[GET_BUCKET(key)] += size;
-
-    for (int i = 0; i < BUCKET_COUNT && total < RECLAIM_THRESHOLD; ++i) {
-        total += garbage_cans[i];
-    }
-
-    if (total >= RECLAIM_THRESHOLD) {
-        enif_cond_signal(gc_cond);
-    }
+    reclaimable[bucket] = enif_make_list_cell(env, term, reclaimable[bucket]);
 }
 
 void NeuralTable::gc() {
@@ -840,6 +875,7 @@ void NeuralTable::gc() {
     
         garbage_cans[gc_curr] = 0;
         env_buckets[gc_curr] = fresh;
+        reclaimable[gc_curr] = enif_make_list(fresh, 0);
         enif_free_env(old);
         enif_rwlock_rwunlock(locks[gc_curr]);
     }

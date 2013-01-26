@@ -127,7 +127,7 @@ static int on_load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info)
 }
 
 static void on_unload(ErlNifEnv *env, void *priv_data) {
-    //NeuralTable::Shutdown();
+    NeuralTable::Shutdown();
 }
 
 ERL_NIF_INIT(neural, nif_funcs, &on_load, NULL, NULL, &on_unload);
