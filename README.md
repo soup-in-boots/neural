@@ -53,6 +53,15 @@ The third argument is the operation to perform. Like ets:update_counter/3, the u
 [4, 5] = neural:increment(table_name, "an_element", [{2, 1}, {2, 1}]).
 ```
 
+#### Update Element ####
+User neural:swap/3
+
+The third argument is the operation to perform. Like ets:update_element/3, the update operation specifies a position and a value to insert at the position as a tuple. The third operation must be either a single update operation tuple or a list of such operations.
+
+```erlang
+    [5, []] = neural:swap(table_name, "an element", [{2, []}, {2, 5}]).
+```
+
 #### Update List ####
 Use neural:shift/3 to remove elements from a list
 
